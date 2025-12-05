@@ -4,7 +4,7 @@ import glob
 import logging
 import numpy as np
 from pathlib import Path
-# import lsstypes as types
+import lsstypes as types
 
 from cosmoprimo.fiducial import DESI, AbacusSummit
 from desilike.theories.galaxy_clustering import BAOPowerSpectrumTemplate, DampedBAOWigglesTracerCorrelationFunctionMultipoles

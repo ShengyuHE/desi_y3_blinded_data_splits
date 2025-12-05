@@ -21,8 +21,6 @@ from fitting_tools import load_bins, get_observable_likelihood
 
 logger = logging.getLogger('fit_blinded_data') 
 
-RESULT_DIR = '/global/cfs/projectdirs/desi/mocks/cai/mock-challenge-cutsky-dr2/blinded_data/dr2-v2/data_splits/results'
-
 ########################################################################################################################################################
 if __name__ == '__main__':
     import argparse
@@ -43,6 +41,8 @@ if __name__ == '__main__':
 
     use_emulator = True
     version = args.version
+
+    RESULT_DIR = f'/global/cfs/projectdirs/desi/mocks/cai/mock-challenge-cutsky-dr2/blinded_data/{version}/data_splits/test'
 
     tracers_bins = []
     default_bins = {
@@ -89,7 +89,7 @@ if __name__ == '__main__':
                 fit_args = {"corr_type":corr_type, "bins_type":bins_type, "cov_type":'covfn', "emulator_fn": emulator_fn}
             else: 
                 fit_args = {"corr_type":corr_type, "bins_type":bins_type, "cov_type":'covfn'}
-            nwalkers= 64; interations = 30001 # save every 300 iterations
+            nwalkers= 64; interations = 60001 # save every 300 iterations
         if not os.path.exists(chain_fn):
             logger.info("Sampling with data", data_args)
             logger.info("Fitting arguments", fit_args)

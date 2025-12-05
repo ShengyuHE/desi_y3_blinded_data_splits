@@ -31,11 +31,14 @@ COLOR_TRACERS = dict(BGS1='yellowgreen',
 def get_namespace(tracer, zrange):
     return {
         ('BGS_BRIGHT-21.35', (0.1, 0.4)): 'BGS1',
+        ('BGS', (0.1, 0.4)): 'BGS1',
         ('LRG', (0.4, 0.6)): 'LRG1',
         ('LRG', (0.6, 0.8)): 'LRG2',
         ('LRG', (0.8, 1.1)): 'LRG3',
         ('ELG_LOPnotqso', (0.8, 1.1)): 'ELG1',
         ('ELG_LOPnotqso', (1.1, 1.6)): 'ELG2',
+        ('ELG', (0.8, 1.1)): 'ELG1',
+        ('ELG', (1.1, 1.6)): 'ELG2',
         ('QSO', (0.8, 2.1)): 'QSO1',
     }[(tracer, zrange)]
 
@@ -44,7 +47,9 @@ def get_mcmc_plot_args(task, params=None):
     Return the plot setting for mcmc.
     """
     if 'SF' in task:
-        if params==None: params = ['qiso', 'qap', 'dm', 'df']
+        if params==None: 
+            params = ['qiso', 'qap', 'dm', 'df']
+            params_label = [r'$\alpha_{\mathrm{iso}}$', r'$\alpha_{\mathrm{ap}}$', r'$dm$', r'$df$']
         true_values = dict(qiso=1, qap=1, dm=0, df=1)
         remove_burnin = 0.5
         slice_step = 4000
@@ -54,6 +59,7 @@ def get_mcmc_plot_args(task, params=None):
         if 'all' in task: 
             params+= ['b1p', 'b2p', 'bsp', 'alpha0p', 'alpha2p', 'alpha4p', 'sn0p', 'sn2p']
             fig_width = 18
+
     elif 'FM' in task:
         if params==None: 
             params = ['h', 'omega_cdm', 'logA']
@@ -132,15 +138,15 @@ def plot_observable(self, ax_top=None, ax_bottom=None, **plot_kwargs):
             ax_top.plot(self.k[ill], self.k[ill] * theory[ill], color = color)
         if show_legend:
             ax_top.legend(loc=1)
-        ax_top.set_ylabel(r'$k P_{\ell}(s)$ [$(\mathrm{Mpc}/h)^{-1}$]')
+        ax_top.set_ylabel(r'$k P_{\ell}(s)$ [$(\mathrm{Mpc}/h)^{-1}$]', fontsize=12)
         # Plot the residuals (bottom panel)
         for ill, ell in enumerate(self.ells):
             ax_bottom[ill].plot(self.k[ill], (data[ill] - theory[ill]) / std[ill], color = color)
             ax_bottom[ill].set_ylim(-3.8, 3.8)
             for offset in [-2., 2.]:
                 ax_bottom[ill].axhline(offset, color='k', linestyle='--')
-            ax_bottom[ill].set_ylabel(r'$\Delta P_{{{0:d}}} / \sigma_{{ P_{{{0:d}}} }}$'.format(ell))
-        ax_bottom[1].set_xlabel(r'$k$ [h/$\mathrm{Mpc}$]')
+            ax_bottom[ill].set_ylabel(r'$\Delta P_{{{0:d}}} / \sigma_{{ P_{{{0:d}}} }}$'.format(ell), fontsize=12)
+        ax_bottom[1].set_xlabel(r'$k$ [$h/\mathrm{Mpc}$]', fontsize=12)
         #settings
         ax_top.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
         ax_bottom[0].tick_params(axis="x", which="both", bottom=False, labelbottom=False)

@@ -355,7 +355,8 @@ def get_blinded(spectrum, tracer='LRG', zrange=(0.4 , 0.6)):
     )
     return blinded_spectrum
 
-def compute_jaxpower_mesh2_spectrum(output_fn, get_data, get_randoms, auw=None, cut=None, ells=(0, 2, 4), edges=None, los='firstpoint', blinding=True, **attrs):
+
+def compute_jaxpower_mesh2_spectrum(output_fn, get_data, get_randoms, auw=None, cut=None, ells=(0, 2, 4), edges=None, los='firstpoint', blinding=False, **attrs):
     import jax
     from jaxpower import (ParticleField, FKPField, compute_fkp2_normalization, compute_fkp2_shotnoise, BinMesh2SpectrumPoles, get_mesh_attrs, compute_mesh2_spectrum, BinParticle2CorrelationPoles, BinParticle2SpectrumPoles, compute_particle2, compute_particle2_shotnoise, MeshAttrs)
 
@@ -429,7 +430,7 @@ def compute_jaxpower_mesh2_spectrum(output_fn, get_data, get_randoms, auw=None, 
     if output_fn is not None and jax.process_index() == 0:
         logger.info(f'Writing to {output_fn}')
         spectrum.write(output_fn)
-    MPI.barrier()
+    mpicomm.barrier()
     return spectrum
 
 def compute_fkp_effective_redshift(fkp, cellsize=10., order=2):
@@ -530,42 +531,6 @@ def compute_jaxpower_window_mesh2_spectrum(output_fn, get_randoms, get_data=None
         window.write(output_fn)
     return window
 
-def compute_theory_for_covariance_mesh2_spectrum(output_fn, spectrum_fns, window_fn, klim=(0., 0.3)):
-    import lsstypes as types
-    from jaxpower import (ParticleField, MeshAttrs, compute_spectrum2_covariance)
-    mean = types.mean([types.read(fn) for fn in spectrum_fns])
-    window = types.read(window_fn)
-
-    mattrs = MeshAttrs(**{name: mean.attrs[name] for name in ['boxsize', 'boxcenter', 'meshsize']})
-    covariance = compute_spectrum2_covariance(mattrs, mean)
-
-    sl = slice(0, None, 5)  # rebin to dk = 0.001 h/Mpc
-    oklim = (0., 0.35)  # fitted k-range, no need to go to higher k
-    smooth = mean.map(lambda pole: pole.clone(k=pole.coords('k', center='mid_if_edges'))).select(k=klim)
-    mean = mean.select(k=sl).select(k=oklim)
-    window = window.at.observable.select(k=sl).at.observable.select(k=oklim).at.theory.select(k=(0., 1.1 * oklim[1]))
-    covariance = covariance.at.observable.select(k=sl).at.observable.select(k=oklim)
-
-    from desilike.theories.galaxy_clustering import FixedPowerSpectrumTemplate, REPTVelocileptorsTracerPowerSpectrumMultipoles
-    from desilike.observables.galaxy_clustering import TracerPowerSpectrumMultipolesObservable
-    from desilike.likelihoods import ObservablesGaussianLikelihood
-    from desilike.profilers import MinuitProfiler
-
-    template = FixedPowerSpectrumTemplate(fiducial='DESI', z=window.theory.get(ells=0).z)
-    theory = REPTVelocileptorsTracerPowerSpectrumMultipoles(template=template)
-    observable = TracerPowerSpectrumMultipolesObservable(data=mean.value(concatenate=True), wmatrix=window.value(), ells=mean.ells, k=[pole.coords('k') for pole in mean], kin=window.theory.get(ells=0).coords('k'), ellsin=window.theory.ells, theory=theory)
-    likelihood = ObservablesGaussianLikelihood(observable, covariance=covariance.value())
-
-    profiler = MinuitProfiler(likelihood, seed=42)
-    profiles = profiler.maximize()
-    theory.init.update(k=smooth.get(0).coords('k'))
-    poles = theory(**profiles.bestfit.choice(index='argmax', input=True))
-    smooth = smooth.clone(value=poles.ravel())
-    if output_fn is not None and jax.process_index() == 0:
-        logger.info(f'Writing to {output_fn}')
-        smooth.write(output_fn)
-    return smooth
-
 
 def compute_theory_for_covariance_mesh2_spectrum(output_fn, spectrum_fns, window_fn, klim=(0., 0.3)):
     import lsstypes as types
@@ -602,6 +567,44 @@ def compute_theory_for_covariance_mesh2_spectrum(output_fn, spectrum_fns, window
         logger.info(f'Writing to {output_fn}')
         smooth.write(output_fn)
     return smooth
+
+
+def compute_theory_for_covariance_mesh2_spectrum(output_fn, spectrum_fns, window_fn, klim=(0., 0.3)):
+    import lsstypes as types
+    from jaxpower import (ParticleField, MeshAttrs, compute_spectrum2_covariance)
+    mean = types.mean([types.read(fn) for fn in spectrum_fns])
+    window = types.read(window_fn)
+
+    mattrs = MeshAttrs(**{name: mean.attrs[name] for name in ['boxsize', 'boxcenter', 'meshsize']})
+    covariance = compute_spectrum2_covariance(mattrs, mean)
+
+    sl = slice(0, None, 5)  # rebin to dk = 0.001 h/Mpc
+    oklim = (0., 0.35)  # fitted k-range, no need to go to higher k
+    smooth = mean.map(lambda pole: pole.clone(k=pole.coords('k', center='mid_if_edges'))).select(k=klim)
+    mean = mean.select(k=sl).select(k=oklim)
+    window = window.at.observable.select(k=sl).at.observable.select(k=oklim).at.theory.select(k=(0., 1.1 * oklim[1]))
+    covariance = covariance.at.observable.select(k=sl).at.observable.select(k=oklim)
+
+    from desilike.theories.galaxy_clustering import FixedPowerSpectrumTemplate, REPTVelocileptorsTracerPowerSpectrumMultipoles
+    from desilike.observables.galaxy_clustering import TracerPowerSpectrumMultipolesObservable
+    from desilike.likelihoods import ObservablesGaussianLikelihood
+    from desilike.profilers import MinuitProfiler
+
+    template = FixedPowerSpectrumTemplate(fiducial='DESI', z=window.theory.get(ells=0).z)
+    theory = REPTVelocileptorsTracerPowerSpectrumMultipoles(template=template)
+    observable = TracerPowerSpectrumMultipolesObservable(data=mean.value(concatenate=True), wmatrix=window.value(), ells=mean.ells, k=[pole.coords('k') for pole in mean], kin=window.theory.get(ells=0).coords('k'), ellsin=window.theory.ells, theory=theory)
+    likelihood = ObservablesGaussianLikelihood(observable, covariance=covariance.value())
+
+    profiler = MinuitProfiler(likelihood, seed=42)
+    profiles = profiler.maximize()
+    theory.init.update(k=smooth.get(0).coords('k'))
+    poles = theory(**profiles.bestfit.choice(index='argmax', input=True))
+    smooth = smooth.clone(value=poles.ravel())
+    if output_fn is not None and jax.process_index() == 0:
+        logger.info(f'Writing to {output_fn}')
+        smooth.write(output_fn)
+    return smooth
+
 
 def compute_jaxpower_covariance_mesh2_spectrum(output_fn, get_data, get_randoms, get_theory, get_spectrum):
     import jax
@@ -646,6 +649,7 @@ def combine_regions(output_fn, fns):
         logger.info(f'Writing to {output_fn}')
         combined.write(output_fn)
     return combined
+
 
 def get_catalog_fn(version='dr2-v2', kind='data', tracer='LRG', weight_type='bitwise', zrange=(0.8, 1.1), region='NGC', nran=18, **kwargs):
     desi_dir = Path('/dvs_ro/cfs/cdirs/desi/survey/catalogs/')
@@ -694,7 +698,8 @@ def get_catalog_fn(version='dr2-v2', kind='data', tracer='LRG', weight_type='bit
             return [base_dir / f'{tracer}_{iran:d}_full_HPmapcut.ran.fits' for iran in range(nran_full)]
     raise ValueError('issue with input args')
 
-def get_measurement_fn(kind='mesh2_spectrum_poles', version='dr2-v2', recon=None, tracer='LRG', region='NGC', zrange=(0.8, 1.1), cut=None, auw=None, nran = 18, weight_type='default', **kwargs):
+
+def get_measurement_fn(kind='mesh2_spectrum_poles', version='dr1-v1.5', recon=None, tracer='LRG', region='NGC', zrange=(0.8, 1.1), cut=None, auw=None, nran = 18, weight_type='default', **kwargs):
     # base_dir = Path(f'/global/cfs/projectdirs/desi/mocks/cai/mock-challenge-cutsky-dr2/')
     # base_dir = base_dir / (f'blinded_{recon}' if recon else 'blinded')
     # base_dir = Path(f'/global/cfs/projectdirs/desi/mocks/cai/mock-challenge-cutsky-dr2/blinded_data/{version}/data_splits')
@@ -709,14 +714,14 @@ def get_measurement_fn(kind='mesh2_spectrum_poles', version='dr2-v2', recon=None
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--tracers', nargs='+', type=str, default=['LRG'], choices=['BGS','LRG','ELG_LOPnotqso','QSO'], help='Tracers')
+    parser.add_argument('--tracers', nargs='+', type=str, default=['QSO'], choices=['BGS','LRG','ELG_LOPnotqso','QSO'], help='Tracers')
     parser.add_argument('--zrange', nargs='+', type=str, default=(0.1, 0.4), help='Redshift bins')
-    parser.add_argument('--regions', nargs='+', type=str, default=['NGC'], choices=['NGC', 'SGC', 'N', 'S', 'GCcomb'] , help='Sky regions to include.')
-    parser.add_argument('--versions', nargs='+', type=str,  default=['dr2-v2'], choices=['dr1-v1.5', 'dr2-v2', 'dr2-v1.1'], help='Catalog versions to use.')
+    parser.add_argument('--regions', nargs='+', type=str, default=['NGC', 'SGC'], choices=['NGC', 'SGC', 'N', 'S', 'GCcomb'] , help='Sky regions to include.')
+    parser.add_argument('--versions', nargs='+', type=str,  default=['dr1-v1.5'], choices=['dr1-v1.5', 'dr2-v2', 'dr2-v1.1'], help='Catalog versions to use.')
     parser.add_argument('--nran', type=int,  default=18, help='number of random files used')
     parser.add_argument('--weight_types', nargs='+', type=str, default=['default_fkp'],
                         choices=['default', 'default_fkp', 'default_thetacut', 'default_auw', 'bitwise', 'bitwise_auw'], help='Weighting schemes to use.')
-    parser.add_argument('--todo', nargs='+', type=str, default=['blinded_mesh2_spectrum'],
+    parser.add_argument('--todo', nargs='+', type=str, default=['mesh2_spectrum'],
                         choices=['auw', 'mesh2_spectrum', 'window_mesh2_spectrum', 'covariance_mesh2_spectrum', 'count2_correlation', 'blinded_mesh2_spectrum'], help='Which processing steps to run.')
     args = parser.parse_args()
     setup_logging()
@@ -858,8 +863,7 @@ if __name__ == '__main__':
                 with create_sharding_mesh() as sharding_mesh:
                     compute_jaxpower_covariance_mesh2_spectrum(output_fn, get_data, get_randoms, get_theory=get_theory, get_spectrum=get_spectrum)
                     jax.clear_caches()
-            
-            MPI.barrier()
+        mpicomm.barrier()
         if with_jax:
             jax.distributed.shutdown()
 

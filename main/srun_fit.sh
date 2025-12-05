@@ -6,7 +6,7 @@ source /global/common/software/desi/users/adematti/cosmodesi_environment.sh test
 # gpu enviroment for 2pt (use jax own CUDA)
 # source /global/homes/s/shengyu/env.sh fit_env
 
-TRACERS=("ELG") #"BGS" "LRG" "ELG" "QSO"
+TRACERS=("LRG") #"BGS" "LRG" "ELG" "QSO"
 
 # -----------------------------------------------
 # Cosmological fitting
