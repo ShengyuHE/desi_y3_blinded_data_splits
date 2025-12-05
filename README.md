@@ -4,4 +4,6 @@ This repository provides all the analysis done for **DESI DR2 blinded data split
 
 
 To activate the envrioment in NERSC, suggest:
-'source /global/common/software/desi/users/adematti/cosmodesi_environment.sh test'
+```
+source /global/common/software/desi/users/adematti/cosmodesi_environment.sh test
+```
