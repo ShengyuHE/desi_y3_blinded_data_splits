@@ -52,7 +52,7 @@ def get_mcmc_plot_args(task, params=None):
             params_label = [r'$\alpha_{\mathrm{iso}}$', r'$\alpha_{\mathrm{ap}}$', r'$dm$', r'$df$']
         true_values = dict(qiso=1, qap=1, dm=0, df=1)
         remove_burnin = 0.5
-        slice_step = 4000
+        slice_step = 5000
         fig_width = 10
         legend_fontsize = 16
         axes_labelsize = 16
@@ -182,7 +182,7 @@ def plot_observable_bao(self, ax_top=None, ax_bottom=None, **plot_kwargs):
     for ax in lax: ax.grid(True)
     lax[-1].set_xlabel(r'$s$ [$\mathrm{Mpc}/h$]')
 
-def plot_mcmc_walkers(chain, params, nwalkers, true_values = None):
+def plot_mcmc_walkers(chain, params, nwalkers = 64, true_values = None):
     ndim            = len(params)
     chain_samples   = dict(zip(chain.basenames(), chain.data))
     samples         = np.array([chain_samples[p] for p in params])

@@ -15,7 +15,6 @@ source /global/common/software/desi/users/adematti/cosmodesi_environment.sh test
 # -----------------------------------------------
 # splits on region and compute the power poles
 
-
 if [[ " ${TASK[@]} " =~ " pk " ]]; then
     for tracer in "${TRACERS[@]}"; do
         echo ">>> Computing pk for $tracer in sky region splits:"

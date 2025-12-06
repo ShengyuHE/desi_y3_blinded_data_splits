@@ -16,6 +16,8 @@ from desilike.likelihoods import ObservablesGaussianLikelihood
 
 from helper import REDSHIFT_BIN_OVERALL, REDSHIFT_BIN_LSS, REDSHIFT_ABACUSHF_v1, NRAN
 
+logger = logging.getLogger('fitting_tools') 
+
 def load_bins(corr_type, bins_type = 'test'):
     if corr_type == 'xi':
         if bins_type in ['test']:
@@ -99,7 +101,7 @@ def load_blinded_data_pip(args, ells = (0,2), bins_type = 'y3_blinding', blindin
     covariance = covariance.at.observable.match(mean)
     return mean, wmatrix, covariance
 
-def get_template(task, z_eff = 1.0, ells = (0,2), cosmo=DESI(), **data_args):
+def get_template(task, z_eff = 1.0, ells = (0,2), cosmo=DESI(), option=None, **data_args):
     '''
     task: {FM/SF}_{fit_cosmology}_{fiducial_cosmology}_{theory}
     return: initialized template
@@ -130,6 +132,10 @@ def get_template(task, z_eff = 1.0, ells = (0,2), cosmo=DESI(), **data_args):
         template.init.update(apmode='qisoqap')
         template.init.params['qiso'].update(delta=0.02, prior={'limits': [0.8, 1.2]})
         template.init.params['qap'].update(delta=0.02, prior={'limits': [0.8, 1.2]})
+        if option == '_wq_prior':
+            logger.info('Set the scaling parameter to wide priors')
+            template.init.params['qiso'].update(delta=0.02, prior={'limits': [0.2, 1.8]})
+            template.init.params['qap'].update(delta=0.02, prior={'limits': [0.2, 1.8]})
         template.init.params['df'].update(delta=0.05)
         template.init.params['dm'].update(prior={'limits': [-0.8, 0.8]})
     elif 'BAO' in task:
@@ -243,7 +249,7 @@ def get_observable_likelihood(task, data_args, fit_args):
             # print('[LOADING EMULATOR]:', fit_args['emulator_fn'])
             theory = get_theory(task, emulator_fn = fit_args['emulator_fn'])
         else:
-            template = get_template(task, z_eff = z_eff, cosmo=cosmo)
+            template = get_template(task, z_eff = z_eff, cosmo=cosmo, option=option)
             theory = get_theory(task, template=template, ells=ells)
         observable = TracerPowerSpectrumMultipolesObservable(data=data.value(concatenate=True), wmatrix=wmatrix.value(), ells=data.ells, 
                                                              k=[pole.coords('k') for pole in data], kin=wmatrix.theory.get(ells=0).coords('k'), ellsin=wmatrix.theory.ells, theory=theory)

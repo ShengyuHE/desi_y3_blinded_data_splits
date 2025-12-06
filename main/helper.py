@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 from astropy.table import Table
 from pathlib import Path
@@ -26,6 +27,15 @@ PLANCK_COSMOLOGY = {
 
 TRACER_BINS = [("LRG", (0.4,0.6)), ]
 
+ALL_REDSHIFT_BIN = [
+('BGS', (0.1, 0.4)),
+('LRG', (0.4, 0.6)),
+('LRG', (0.6, 0.8)),
+('LRG', (0.8, 1.1)),
+('ELG_LOPnotqso', (0.8, 1.1)),
+('ELG_LOPnotqso', (1.1, 1.6)),
+('QSO', (0.8, 2.1))
+]
 
 REDSHIFT_BIN_LSS  = dict(BGS = [(0.1, 0.4)],
                        LRG = [(0.4, 0.6), (0.6, 0.8), (0.8, 1.1)], 
@@ -93,6 +103,22 @@ TRACER_CUTSKY_INFO = {
 }
 
 ##### Functions #####
+
+def get_namespace(tracer, zrange):
+    return {
+        ('BGS_BRIGHT-21.35', (0.1, 0.4)): 'BGS1',
+        ('BGS', (0.1, 0.4)): 'BGS1',
+        ('LRG', (0.4, 0.6)): 'LRG1',
+        ('LRG', (0.6, 0.8)): 'LRG2',
+        ('LRG', (0.8, 1.1)): 'LRG3',
+        ('ELG_LOPnotqso', (0.8, 1.1)): 'ELG1',
+        ('ELG_LOPnotqso', (1.1, 1.6)): 'ELG2',
+        ('ELG', (0.8, 1.1)): 'ELG1',
+        ('ELG', (1.1, 1.6)): 'ELG2',
+        ('QSO', (0.8, 2.1)): 'QSO1',
+    }[(tracer, zrange)]
+
+
 def GET_RECON_BIAS(tracer='LRG', grid_cosmo=None): # need update for different cosmologies
     if tracer.startswith('BGS'):
         f=  0.682
@@ -193,7 +219,7 @@ def GET_CTHR(tracer):
     return cthr
 
 
-def get_des_mask(ra, dec, polygon_dir='./', if_deg=True):
+def get_des_mask(ra, dec, polygon_dir='/global/homes/s/shengyu/Y3/blinded_data_splits/scripts', if_deg=True):
     import matplotlib.patches as patches
     from matplotlib.patches import Polygon
     from matplotlib.path import Path
@@ -238,12 +264,14 @@ def SELECT_REGION(ra, dec, region=None):
     # mask_des = des[hp.ang2pix(nside, ra, dec, nest=True, lonlat=True)]
     if region == 'DES':
         return get_des_mask(ra, dec)
+    if region == 'noDES':
+        return ~get_des_mask(ra, dec)
     if region == 'SnoDES':
         return mask_s & (~get_des_mask(ra, dec))
     if region == 'SSGCnoDES':
         return (~mask_ngc) & mask_s & (~get_des_mask(ra, dec))
-    raise ValueError('unknown region {}'.format(region))
 
+    raise ValueError('unknown region {}'.format(region))
 
 '''
 RSF_COV_ERROR = dict(LRG = [0.319, 0.256, 0.226],

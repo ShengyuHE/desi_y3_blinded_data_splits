@@ -348,7 +348,7 @@ def compute_cucount_particle2_correlation(output_fn, get_data, get_randoms, auw=
 def get_blinded(spectrum, tracer='LRG', zrange=(0.4 , 0.6)):
     from desiblind import TracerPowerSpectrumMultipolesBlinder
     blinded_label = get_namespace(tracer, zrange)
-    logger.info(f'Blinding power spectrum for {blinded_label}.')
+    logger.info(f'Blinding measurement for {blinded_label}.')
     blinded_spectrum = TracerPowerSpectrumMultipolesBlinder.apply_blinding(
         name=blinded_label,
         data=spectrum,
@@ -569,43 +569,6 @@ def compute_theory_for_covariance_mesh2_spectrum(output_fn, spectrum_fns, window
     return smooth
 
 
-def compute_theory_for_covariance_mesh2_spectrum(output_fn, spectrum_fns, window_fn, klim=(0., 0.3)):
-    import lsstypes as types
-    from jaxpower import (ParticleField, MeshAttrs, compute_spectrum2_covariance)
-    mean = types.mean([types.read(fn) for fn in spectrum_fns])
-    window = types.read(window_fn)
-
-    mattrs = MeshAttrs(**{name: mean.attrs[name] for name in ['boxsize', 'boxcenter', 'meshsize']})
-    covariance = compute_spectrum2_covariance(mattrs, mean)
-
-    sl = slice(0, None, 5)  # rebin to dk = 0.001 h/Mpc
-    oklim = (0., 0.35)  # fitted k-range, no need to go to higher k
-    smooth = mean.map(lambda pole: pole.clone(k=pole.coords('k', center='mid_if_edges'))).select(k=klim)
-    mean = mean.select(k=sl).select(k=oklim)
-    window = window.at.observable.select(k=sl).at.observable.select(k=oklim).at.theory.select(k=(0., 1.1 * oklim[1]))
-    covariance = covariance.at.observable.select(k=sl).at.observable.select(k=oklim)
-
-    from desilike.theories.galaxy_clustering import FixedPowerSpectrumTemplate, REPTVelocileptorsTracerPowerSpectrumMultipoles
-    from desilike.observables.galaxy_clustering import TracerPowerSpectrumMultipolesObservable
-    from desilike.likelihoods import ObservablesGaussianLikelihood
-    from desilike.profilers import MinuitProfiler
-
-    template = FixedPowerSpectrumTemplate(fiducial='DESI', z=window.theory.get(ells=0).z)
-    theory = REPTVelocileptorsTracerPowerSpectrumMultipoles(template=template)
-    observable = TracerPowerSpectrumMultipolesObservable(data=mean.value(concatenate=True), wmatrix=window.value(), ells=mean.ells, k=[pole.coords('k') for pole in mean], kin=window.theory.get(ells=0).coords('k'), ellsin=window.theory.ells, theory=theory)
-    likelihood = ObservablesGaussianLikelihood(observable, covariance=covariance.value())
-
-    profiler = MinuitProfiler(likelihood, seed=42)
-    profiles = profiler.maximize()
-    theory.init.update(k=smooth.get(0).coords('k'))
-    poles = theory(**profiles.bestfit.choice(index='argmax', input=True))
-    smooth = smooth.clone(value=poles.ravel())
-    if output_fn is not None and jax.process_index() == 0:
-        logger.info(f'Writing to {output_fn}')
-        smooth.write(output_fn)
-    return smooth
-
-
 def compute_jaxpower_covariance_mesh2_spectrum(output_fn, get_data, get_randoms, get_theory, get_spectrum):
     import jax
     from jaxpower import (ParticleField, get_mesh_attrs, MeshAttrs, compute_fkp2_covariance_window, compute_spectrum2_covariance, interpolate_window_function, read)
@@ -661,7 +624,7 @@ def get_catalog_fn(version='dr2-v2', kind='data', tracer='LRG', weight_type='bit
         else:
             data_dir = base_dir / 'nonKP'
         if kind == 'data':
-            return data_dir / f'{tracer}_{region}_clustering.dat.fits'
+            return [data_dir / f'{tracer}_{region}_clustering.dat.fits']
         if kind == 'randoms':
             return [data_dir / f'{tracer}_{region}_{iran:d}_clustering.ran.fits' for iran in range(nran)]
         if kind == 'full_data':
@@ -675,7 +638,7 @@ def get_catalog_fn(version='dr2-v2', kind='data', tracer='LRG', weight_type='bit
         else:
             data_dir = base_dir / 'v1.5'
         if kind == 'data':
-            return data_dir / f'{tracer}_{region}_clustering.dat.fits'
+            return [data_dir / f'{tracer}_{region}_clustering.dat.fits']
         if kind == 'randoms':
             return [data_dir / f'{tracer}_{region}_{iran:d}_clustering.ran.fits' for iran in range(nran)]
         if kind == 'full_data':
@@ -689,7 +652,7 @@ def get_catalog_fn(version='dr2-v2', kind='data', tracer='LRG', weight_type='bit
         else:
             data_dir = base_dir / 'nonKP'
         if kind == 'data':
-            return data_dir / f'{tracer}_{region}_clustering.dat.fits'
+            return [data_dir / f'{tracer}_{region}_clustering.dat.fits']
         if kind == 'randoms':
             return [data_dir / f'{tracer}_{region}_{iran:d}_clustering.ran.fits' for iran in range(nran)]
         if kind == 'full_data':
@@ -698,12 +661,12 @@ def get_catalog_fn(version='dr2-v2', kind='data', tracer='LRG', weight_type='bit
             return [base_dir / f'{tracer}_{iran:d}_full_HPmapcut.ran.fits' for iran in range(nran_full)]
     raise ValueError('issue with input args')
 
-
-def get_measurement_fn(kind='mesh2_spectrum_poles', version='dr1-v1.5', recon=None, tracer='LRG', region='NGC', zrange=(0.8, 1.1), cut=None, auw=None, nran = 18, weight_type='default', **kwargs):
+def get_measurement_fn(kind='mesh2_spectrum_poles', version='dr1-v1.5', recon=None, tracer='LRG', region='NGC', zrange=(0.8, 1.1), cut=None, auw=None, nran = 18, weight_type='default', save_local = True, **kwargs):
     # base_dir = Path(f'/global/cfs/projectdirs/desi/mocks/cai/mock-challenge-cutsky-dr2/')
     # base_dir = base_dir / (f'blinded_{recon}' if recon else 'blinded')
     # base_dir = Path(f'/global/cfs/projectdirs/desi/mocks/cai/mock-challenge-cutsky-dr2/blinded_data/{version}/data_splits')
-    base_dir = Path(f'/pscratch/sd/s/shengyu/Y3/blinded/{version}/data_splits')
+    if save_local == True:
+        base_dir = Path(f'/pscratch/sd/s/shengyu/Y3/blinded/{version}/data_splits')
     if cut: cut = '_thetacut'
     else: cut = ''
     if auw: auw = '_auw'
@@ -714,10 +677,12 @@ def get_measurement_fn(kind='mesh2_spectrum_poles', version='dr1-v1.5', recon=No
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--tracers', nargs='+', type=str, default=['QSO'], choices=['BGS','LRG','ELG_LOPnotqso','QSO'], help='Tracers')
-    parser.add_argument('--zrange', nargs='+', type=str, default=(0.1, 0.4), help='Redshift bins')
-    parser.add_argument('--regions', nargs='+', type=str, default=['NGC', 'SGC'], choices=['NGC', 'SGC', 'N', 'S', 'GCcomb'] , help='Sky regions to include.')
-    parser.add_argument('--versions', nargs='+', type=str,  default=['dr1-v1.5'], choices=['dr1-v1.5', 'dr2-v2', 'dr2-v1.1'], help='Catalog versions to use.')
+    # parser.add_argument('--tracers', nargs='+', type=str, default=['BGS'], choices=['BGS','LRG','ELG_LOPnotqso','QSO'], help='Tracers')
+    # parser.add_argument('--zrange', nargs='+', type=str, default=(0.1, 0.4), help='Redshift bins')
+    # TODO: Process one catalog bin and region per job to avoid cross-bin interaction issues
+    parser.add_argument('--indx', type=int, default=0, help='index for redshift bin')
+    parser.add_argument('--regions', nargs='+', type=str, default=['NGC'], choices=['NGC', 'SGC', 'N', 'S', 'noDES', 'SnoDES', 'GCcomb'], help='Sky regions to include.')
+    parser.add_argument('--versions', nargs='+', type=str,  default=['dr2-v2'], choices=['dr1-v1.5', 'dr2-v2', 'dr2-v1.1'], help='Catalog versions to use.')
     parser.add_argument('--nran', type=int,  default=18, help='number of random files used')
     parser.add_argument('--weight_types', nargs='+', type=str, default=['default_fkp'],
                         choices=['default', 'default_fkp', 'default_thetacut', 'default_auw', 'bitwise', 'bitwise_auw'], help='Weighting schemes to use.')
@@ -737,7 +702,7 @@ if __name__ == '__main__':
     ('ELG_LOPnotqso', (1.1, 1.6)),
     ('QSO', (0.8, 2.1))
     ]
-    tracers_bins = default_bins[6:7]
+    tracers_bins = [default_bins[args.indx]] # TODO: Process one catalog bin and region per job to avoid cross-bin interaction issues
     with_jax = any(td in ['auw', 'mesh2_spectrum',  'blinded_mesh2_spectrum', 'window_mesh2_spectrum', 'covariance_mesh2_spectrum', 'count2_correlation'] for td in todo)
     if with_jax:
         import jax
@@ -749,7 +714,7 @@ if __name__ == '__main__':
     else:
         os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.01'
     for (tracer, zrange), region, version, weight_type in itertools.product(tracers_bins, args.regions, args.versions, args.weight_types):
-        logger.info((tracer, zrange), region, version, weight_type)
+        # logger.info((tracer, zrange), region, version, weight_type)
         if 'BGS' in tracer:
             tracer = 'BGS_BRIGHT-21.5' if 'dr1' in version else 'BGS_BRIGHT-21.35'
         catalog_args = dict(version=version, region=region, tracer=tracer, zrange=zrange, weight_type=weight_type, nran=args.nran)
@@ -770,16 +735,17 @@ if __name__ == '__main__':
                     if mpicomm.rank == 0:
                         fns = [get_measurement_fn(**(kw | dict(region=sub_region))) for sub_region in ['NGC','SGC']]
                         combine_regions(output_fn, fns)
-        elif region in ['NGC','SGC', 'N', 'S']:
-            data_fn = get_catalog_fn(kind='data', **catalog_args)
-            all_randoms_fn = get_catalog_fn(kind='randoms', **catalog_args)
-
+        else:
+            if region in ['NGC','SGC']: # use NGC SGC separately
+                data_fn = get_catalog_fn(kind='data', **catalog_args)
+                all_randoms_fn = get_catalog_fn(kind='randoms', **catalog_args)
+            elif region in ['N', 'S', 'noDES', 'SnoDES']: # use NGC+SGC (all files)
+                data_fn = [fn for cap in ['NGC', 'SGC'] for fn in get_catalog_fn(kind='data', **(catalog_args | {'region': cap}))]
+                all_randoms_fn = [fn for cap in ['NGC', 'SGC'] for fn in get_catalog_fn(kind='randoms', **(catalog_args | {'region': cap}))]
             if 'bitwise' in catalog_args['weight_type']:
                 catalog_args['ntmp'] = compute_ntmp(get_catalog_fn(kind='full_data', **catalog_args))
-
-            get_data = lambda: get_clustering_positions_weights(data_fn, kind='data', **catalog_args)
+            get_data = lambda: get_clustering_positions_weights(*data_fn, kind='data', **catalog_args)
             get_randoms = lambda: get_clustering_positions_weights(*all_randoms_fn, kind='randoms', **catalog_args)
-
             if 'auw' in todo:
                 full_data_fn = get_catalog_fn(kind='full_data', **catalog_args)
                 all_full_randoms_fn = get_catalog_fn(kind='full_randoms', **catalog_args)
@@ -806,8 +772,9 @@ if __name__ == '__main__':
             if 'mesh2_spectrum' in todo:
                 output_fn = get_measurement_fn(**catalog_args, **spectrum_args, kind='mesh2_spectrum_poles')
                 spectrum_args2 = dict(spectrum_args)
-                # if 'dr2' in version:
+                if 'dr2' in version:
                     # spectrum_args2.update(ells=[0], edges={'step': 0.02})
+                    raise ValueError(f'unblinded measurement is forbidden for {version}!')
                 if not os.path.exists(output_fn):
                     with create_sharding_mesh() as sharding_mesh:
                         compute_jaxpower_mesh2_spectrum(output_fn, get_data, get_randoms, **spectrum_args2)
@@ -914,81 +881,5 @@ def get_catalog_fn(version='dr1-v1.5', kind='data', tracer='LRG', weight_type='b
     todo += ['combine']
     # todo += ['count2_correlation']
 
-
-def compute_jaxpower_mesh2_spectrum(output_fn, get_data, get_randoms, auw=None, cut=None, ells=(0, 2, 4), edges=None, los='firstpoint', blinding=True, **attrs):
-    import jax
-    from jaxpower import (ParticleField, FKPField, compute_fkp2_normalization, compute_fkp2_shotnoise, BinMesh2SpectrumPoles, get_mesh_attrs, compute_mesh2_spectrum, BinParticle2CorrelationPoles, BinParticle2SpectrumPoles, compute_particle2, compute_particle2_shotnoise, MeshAttrs)
-
-    data, randoms = get_data(), get_randoms()
-    mattrs = get_mesh_attrs(data[0], randoms[0], check=True, **attrs)
-
-    data = list(data)
-    bitwise_weights = None
-    if len(data[1]) > 1:
-        bitwise_weights = list(data[1])
-        from cucount.jax import BitwiseWeight
-        from cucount.numpy import reformat_bitarrays
-        data[1] = individual_weight = bitwise_weights[0] * BitwiseWeight(weights=bitwise_weights[1:], p_correction_nbits=False)(bitwise_weights[1:])  # individual weight * IIP weight
-    else:  # no bitwise_weights
-        data[1] = individual_weight = data[1][0]
-    #print(bitwise_weights[0][:10], data[1][:10], data[1].sum(), randoms[1][0].sum())
-    data = ParticleField(*data, attrs=mattrs, exchange=True, backend='jax')
-    randoms = ParticleField(randoms[0], randoms[1][0], attrs=mattrs, exchange=True, backend='jax')
-    fkp = FKPField(data, randoms)
-    bin = BinMesh2SpectrumPoles(mattrs, edges={'step': 0.001}, ells=ells)
-    norm = compute_fkp2_normalization(fkp, bin=bin, cellsize=10)
-    num_shotnoise = compute_fkp2_shotnoise(fkp, bin=bin)
-    mesh = fkp.paint(resampler='tsc', interlacing=3, compensate=True, out='real')
-    wsum_data1 = data.sum()
-    jitted_compute_mesh2_spectrum = jax.jit(compute_mesh2_spectrum, static_argnames=['los'], donate_argnums=[0])
-    #jitted_compute_mesh2_spectrum = compute_mesh2_spectrum
-    spectrum = jitted_compute_mesh2_spectrum(mesh, bin=bin, los=los).clone(norm=norm, num_shotnoise=num_shotnoise)
-    jax.block_until_ready(spectrum)
-    t0 = time.time()
-    if cut is not None:
-        sattrs = {'theta': (0., 0.05)}
-        bin = BinParticle2SpectrumPoles(mattrs, edges=bin.edges, xavg=bin.xavg, sattrs=sattrs, ells=ells)
-        #bin = BinParticle2CorrelationPoles(mattrs, edges={'step': 0.1}, sattrs=sattrs, ells=ells)
-        from jaxpower.particle2 import convert_particles
-        particles = convert_particles(fkp.particles)
-        close = compute_particle2(particles, bin=bin, los=los)
-        close = close.clone(num_shotnoise=compute_particle2_shotnoise(particles, bin=bin))
-        spectrum = spectrum.clone(value=spectrum.value() - close.clone(norm=norm).value())
-    elif bitwise_weights is not None or auw is not None:
-        from cucount.jax import WeightAttrs
-        from jaxpower.particle2 import convert_particles
-        sattrs = {'theta': (0., 0.1)}
-        if bitwise_weights is not None:
-            data = convert_particles(fkp.data, weights=bitwise_weights + [individual_weight])
-        else:
-            data = convert_particles(fkp.data, weights=[individual_weight] * 2, index_value=dict(individual_weight=1, negative_weight=1))
-        wattrs = WeightAttrs(bitwise=dict(weights=data.get('bitwise_weight')) if bitwise_weights else None,
-                             angular=dict(sep=auw.get('DD').coords('theta'), weight=auw.get('DD').value()) if auw is not None else None)
-        bin = BinParticle2SpectrumPoles(mattrs, edges=bin.edges, xavg=bin.xavg, sattrs=sattrs, wattrs=wattrs, ells=ells)
-        #bin = BinParticle2CorrelationPoles(mattrs, edges={'step': 0.1}, sattrs=sattrs, wattrs=wattrs, ells=ells)
-        DD = compute_particle2(data, bin=bin, los=los)
-        DD = DD.clone(num_shotnoise=compute_particle2_shotnoise(data, bin=bin))
-        #DD = DD.to_spectrum(spectrum)
-        add = DD.clone(norm=norm).value()
-        if False: #auw is not None and 'DR' in auw.pairs:
-            # I think we can safely ignore the DR term
-            data = convert_particles(fkp.data)
-            randoms = convert_particles(fkp.randoms, weights=fkp.data.sum() / fkp.randoms.sum() * fkp.randoms.weights)
-            wattrs = WeightAttrs(angular=dict(sep=auw.get('DR').coords('theta'), weight=auw.get('DR').value()))
-            bin = BinParticle2SpectrumPoles(mattrs, edges=bin.edges, sattrs=sattrs, wattrs=wattrs, ells=ells)
-            DR = compute_particle2(data, randoms, bin=bin, los=los)
-            RD = compute_particle2(randoms, data, bin=bin, los=los)
-            add += - DR.clone(norm=norm).value() - RD.clone(norm=norm).value()
-        spectrum = spectrum.clone(value=spectrum.value() + add)
-    jax.block_until_ready(spectrum)
-    logger.info(f'Direct calculation in {time.time() - t0:.2f} s')
-    mattrs = {name: mattrs[name] for name in ['boxsize', 'boxcenter', 'meshsize']}
-    spectrum = spectrum.clone(attrs=dict(los=los, wsum_data1=wsum_data1, **mattrs))
-    if blinding == True:
-        spectrum = get_blinded(spectrum,  tracer=attrs['tracer'], zrange=attrs['zrange'],)
-    if output_fn is not None and jax.process_index() == 0:
-        logger.info(f'Writing to {output_fn}')
-        spectrum.write(output_fn)
-    return spectrum
 
 '''
