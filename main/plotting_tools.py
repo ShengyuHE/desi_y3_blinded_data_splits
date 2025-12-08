@@ -59,14 +59,13 @@ def get_mcmc_plot_args(task, params=None):
         if 'all' in task: 
             params+= ['b1p', 'b2p', 'bsp', 'alpha0p', 'alpha2p', 'alpha4p', 'sn0p', 'sn2p']
             fig_width = 18
-
     elif 'FM' in task:
         if params==None: 
             params = ['h', 'omega_cdm', 'logA']
             params_label = [r'$h$', r'$\Omega_{\mathrm{cdm}}$', r'$\ln(10^{10} A_s)$']
         true_values = {param: PLANCK_COSMOLOGY[param] for param in params}
         remove_burnin = 0.5
-        slice_step = 4000
+        slice_step = 4500
         fig_width = 8
         legend_fontsize = 16
         axes_labelsize = 16
