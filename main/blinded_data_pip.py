@@ -1,7 +1,7 @@
 """
 salloc -N 1 -C gpu -t 02:00:00 --gpus 4 --qos interactive --account desi_g
-source /global/common/software/desi/users/adematti/cosmodesi_environment.sh test
-srun -n 4 python blinded_data_pip.py
+source /global/homes/s/shengyu/env.sh 2pt_env
+srun -n 1 python blinded_data_pip.py
 """
 
 import os
@@ -18,10 +18,9 @@ sys.path.append('./')
 from helper import SELECT_REGION
 mpicomm = MPI.COMM_WORLD
 
-sys.path.append('./')
-from helper import NRAN
-
 logger = logging.getLogger('data_pip') 
+NRAN = {'LRG': 8, 'ELG': 10, 'QSO': 4}
+overwrite = False
 
 def get_proposal_mattrs(tracer):
     if 'BGS' in tracer:
@@ -36,9 +35,8 @@ def get_proposal_mattrs(tracer):
         mattrs = dict(boxsize=10000., cellsize=10)
     else:
         raise NotImplementedError(f'tracer {tracer} is unknown')
-    #mattrs.update(cellsize=30)
+    #mattrs.update(cellsize=30) please I will say
     return mattrs
-
 
 def apply_wntmp(ntile, ntmp_table, method='ntmp'):
     frac_missing_pw, frac_zero_prob = ntmp_table
@@ -89,7 +87,6 @@ def _compute_ntmp(bitweights, loc_assigned, ntile):
     frac_missing_pw = np.divide(sum_ntile - sum_wiip, sum_ntile, out=np.ones_like(sum_wiip), where=~mask_zero_ntile)
     return frac_missing_pw, frac_zero_prob
 
-
 def compute_ntmp(full_data_fn):
     from mpi4py import MPI
     mpicomm = MPI.COMM_WORLD
@@ -103,7 +100,6 @@ def compute_ntmp(full_data_fn):
 def _format_bitweights(bitweights):
     if bitweights.ndim == 2: return list(bitweights.T)
     return [bitweights]
-
 
 def get_clustering_rdzw(*fns, kind=None, zrange=None, region=None, tracer=None, weight_type='default', ntmp=None, **kwargs):
     from mpi4py import MPI
@@ -148,7 +144,6 @@ def get_clustering_rdzw(*fns, kind=None, zrange=None, region=None, tracer=None, 
     rdzw = [np.concatenate([arrays[i] for arrays in rdzw], axis=0) for i in range(len(rdzw[0]))]
     for i in range(4): rdzw[i] = rdzw[i].astype('f8')
     return rdzw[:3], rdzw[3:]
-
 
 def get_full_rdw(*fns, kind='parent', zrange=None, region=None, tracer=None, weight_type='default', ntmp=None, **kwargs):
 
@@ -201,16 +196,6 @@ def get_clustering_positions_weights(*fns, **kwargs):
     dist = fiducial.comoving_radial_distance(z)
     positions = sky_to_cartesian(dist, ra, dec)
     return positions, weights
-
-def get_namespace(tracer, zrange):
-    return {
-        ('BGS_BRIGHT-21.35', (0.1, 0.4)): 'BGS_z0',
-        ('LRG', (0.4, 0.6)): 'LRG_z0',
-        ('LRG', (0.6, 0.8)): 'LRG_z1',
-        ('LRG', (0.8, 1.1)): 'LRG_z2',
-        ('ELG_LOPnotqso', (1.1, 1.6)): 'ELG_z1',
-        ('QSO', (0.8, 2.1)): 'QSO_z0',
-    }[(tracer, zrange)]
 
 def compute_angular_upweights(output_fn, get_data, get_randoms, tracer='ELG'):
     from cucount.jax import Particles, BinAttrs, WeightAttrs, count2, setup_logging
@@ -284,7 +269,6 @@ def compute_pycorr_particle2_correlation(output_fn, get_data, get_randoms, auw=N
         correlation.write(output_fn)
     return correlation
 
-
 def compute_cucount_particle2_correlation(output_fn, get_data, get_randoms, auw=None, cut=None):
     from cucount.jax import Particles, BinAttrs, WeightAttrs, count2, setup_logging
     import lsstypes as types
@@ -344,19 +328,28 @@ def compute_cucount_particle2_correlation(output_fn, get_data, get_randoms, auw=
         correlation.write(output_fn)
     return correlation
 
+def get_namespace(tracer, zrange):
+    return {
+        ('BGS_BRIGHT-21.35', (0.1, 0.4)): 'BGS_z0',
+        ('LRG', (0.4, 0.6)): 'LRG_z0',
+        ('LRG', (0.6, 0.8)): 'LRG_z1',
+        ('LRG', (0.8, 1.1)): 'LRG_z2',
+        ('ELG_LOPnotqso', (0.8, 1.1)): 'ELG_z0',
+        ('ELG_LOPnotqso', (1.1, 1.6)): 'ELG_z1',
+        ('QSO', (0.8, 2.1)): 'QSO_z0',
+    }[(tracer, zrange)]
 
 def get_blinded(spectrum, tracer='LRG', zrange=(0.4 , 0.6)):
+    sys.path.append('/global/cfs/cdirs/desicollab/users/epaillas/code/desiblind')
     from desiblind import TracerPowerSpectrumMultipolesBlinder
     blinded_label = get_namespace(tracer, zrange)
-    logger.info(f'Blinding measurement for {blinded_label}.')
     blinded_spectrum = TracerPowerSpectrumMultipolesBlinder.apply_blinding(
         name=blinded_label,
         data=spectrum,
     )
     return blinded_spectrum
 
-
-def compute_jaxpower_mesh2_spectrum(output_fn, get_data, get_randoms, auw=None, cut=None, ells=(0, 2, 4), edges=None, los='firstpoint', blinding=False, **attrs):
+def compute_jaxpower_mesh2_spectrum(output_fn, get_data, get_randoms, auw=None, cut=None, ells=(0, 2, 4), edges=None, los='firstpoint', blinding=False, tracer=None, zrange=None, **attrs):
     import jax
     from jaxpower import (ParticleField, FKPField, compute_fkp2_normalization, compute_fkp2_shotnoise, BinMesh2SpectrumPoles, get_mesh_attrs, compute_mesh2_spectrum, BinParticle2CorrelationPoles, BinParticle2SpectrumPoles, compute_particle2, compute_particle2_shotnoise, MeshAttrs)
 
@@ -426,7 +419,7 @@ def compute_jaxpower_mesh2_spectrum(output_fn, get_data, get_randoms, auw=None, 
     mattrs = {name: mattrs[name] for name in ['boxsize', 'boxcenter', 'meshsize']}
     spectrum = spectrum.clone(attrs=dict(los=los, wsum_data1=wsum_data1, **mattrs))
     if blinding == True:
-        spectrum = get_blinded(spectrum, attrs['tracer'], attrs['zrange'])
+        spectrum = get_blinded(spectrum, tracer, zrange)
     if output_fn is not None and jax.process_index() == 0:
         logger.info(f'Writing to {output_fn}')
         spectrum.write(output_fn)
@@ -531,7 +524,6 @@ def compute_jaxpower_window_mesh2_spectrum(output_fn, get_randoms, get_data=None
         window.write(output_fn)
     return window
 
-
 def compute_theory_for_covariance_mesh2_spectrum(output_fn, spectrum_fns, window_fn, klim=(0., 0.3)):
     import lsstypes as types
     from jaxpower import (ParticleField, MeshAttrs, compute_spectrum2_covariance)
@@ -567,7 +559,6 @@ def compute_theory_for_covariance_mesh2_spectrum(output_fn, spectrum_fns, window
         logger.info(f'Writing to {output_fn}')
         smooth.write(output_fn)
     return smooth
-
 
 def compute_jaxpower_covariance_mesh2_spectrum(output_fn, get_data, get_randoms, get_theory, get_spectrum):
     import jax
@@ -605,7 +596,6 @@ def compute_jaxpower_covariance_mesh2_spectrum(output_fn, get_data, get_randoms,
         cov.write(output_fn)
     return cov
 
-
 def combine_regions(output_fn, fns):
     combined = types.sum([types.read(fn) for fn in fns])  # for the covariance matrix, assumes observables are independent
     if output_fn is not None:
@@ -613,24 +603,27 @@ def combine_regions(output_fn, fns):
         combined.write(output_fn)
     return combined
 
-
-def get_catalog_fn(version='dr2-v2', kind='data', tracer='LRG', weight_type='bitwise', zrange=(0.8, 1.1), region='NGC', nran=18, **kwargs):
+def get_catalog_fn(version='dr2-v2', subver=None, kind='data', tracer='LRG', weight_type='bitwise', zrange=(0.8, 1.1), region='NGC', nran=18, **kwargs):
     desi_dir = Path('/dvs_ro/cfs/cdirs/desi/survey/catalogs/')
     nran_full = 1
-    if version in ['dr2-v2']:
+    if 'dr2-v2' in version:
         base_dir = desi_dir / f'DA2/LSS/loa-v1/LSScats/v2'
         if 'bitwise' in weight_type:
             data_dir = base_dir / 'PIP'
         else:
             data_dir = base_dir / 'nonKP'
+        if subver is not None or subver=='':
+            zcmb = '_zcmb' if 'zcmb' in subver else ''
+        else:
+            zcmb = ''
         if kind == 'data':
-            return [data_dir / f'{tracer}_{region}_clustering.dat.fits']
+            return [data_dir / f'{tracer}{zcmb}_{region}_clustering.dat.fits']
         if kind == 'randoms':
-            return [data_dir / f'{tracer}_{region}_{iran:d}_clustering.ran.fits' for iran in range(nran)]
+            return [data_dir / f'{tracer}{zcmb}_{region}_{iran:d}_clustering.ran.fits' for iran in range(nran)]
         if kind == 'full_data':
-            return base_dir / f'{tracer}_full_HPmapcut.dat.fits'
+            return base_dir / f'{tracer}{zcmb}_full_HPmapcut.dat.fits'
         if kind == 'full_randoms':
-            return [base_dir / f'{tracer}_{iran:d}_full_HPmapcut.ran.fits' for iran in range(nran_full)]
+            return [base_dir / f'{tracer}{zcmb}_{iran:d}_full_HPmapcut.ran.fits' for iran in range(nran_full)]
     elif version == 'dr1-v1.5':
         base_dir = desi_dir / f'Y1/LSS/iron/LSScats'
         if 'bitwise' in weight_type:
@@ -661,17 +654,21 @@ def get_catalog_fn(version='dr2-v2', kind='data', tracer='LRG', weight_type='bit
             return [base_dir / f'{tracer}_{iran:d}_full_HPmapcut.ran.fits' for iran in range(nran_full)]
     raise ValueError('issue with input args')
 
-def get_measurement_fn(kind='mesh2_spectrum_poles', version='dr1-v1.5', recon=None, tracer='LRG', region='NGC', zrange=(0.8, 1.1), cut=None, auw=None, nran = 18, weight_type='default', save_local = True, **kwargs):
+def get_measurement_fn(kind='mesh2_spectrum_poles', version='dr1-v1.5', subver=None, recon=None, tracer='LRG', region='NGC', zrange=(0.8, 1.1), cut=None, auw=None, nran = 18, weight_type='default', save_local = False, **kwargs):
     # base_dir = Path(f'/global/cfs/projectdirs/desi/mocks/cai/mock-challenge-cutsky-dr2/')
     # base_dir = base_dir / (f'blinded_{recon}' if recon else 'blinded')
-    # base_dir = Path(f'/global/cfs/projectdirs/desi/mocks/cai/mock-challenge-cutsky-dr2/blinded_data/{version}/data_splits')
+    base_dir = Path(f'/global/cfs/projectdirs/desi/mocks/cai/mock-challenge-cutsky-dr2/blinded_data/{version}/data_splits')
     if save_local == True:
         base_dir = Path(f'/pscratch/sd/s/shengyu/Y3/blinded/{version}/data_splits')
     if cut: cut = '_thetacut'
     else: cut = ''
     if auw: auw = '_auw'
     else: auw = ''
-    return str(base_dir / f'{kind}_{tracer}_z{zrange[0]:.1f}-{zrange[1]:.1f}_{region}_{weight_type}{auw}{cut}_nran{nran}.h5')
+    if subver is not None or subver=='':
+        zcmb = '_zcmb' if 'zcmb' in subver else ''
+    else:
+        zcmb = ''
+    return str(base_dir / f'{kind}_{tracer}{zcmb}_z{zrange[0]:.1f}-{zrange[1]:.1f}_{region}_{weight_type}{auw}{cut}_nran{nran}.h5')
 
 ########################################################################################################################################################################################
 if __name__ == '__main__':
@@ -683,10 +680,11 @@ if __name__ == '__main__':
     parser.add_argument('--indx', type=int, default=0, help='index for redshift bin')
     parser.add_argument('--regions', nargs='+', type=str, default=['NGC'], choices=['NGC', 'SGC', 'N', 'S', 'noDES', 'SnoDES', 'GCcomb'], help='Sky regions to include.')
     parser.add_argument('--versions', nargs='+', type=str,  default=['dr2-v2'], choices=['dr1-v1.5', 'dr2-v2', 'dr2-v1.1'], help='Catalog versions to use.')
+    parser.add_argument('--subver', default=None, choices=['zcmb', None], help='sub version for data catalogs')
     parser.add_argument('--nran', type=int,  default=18, help='number of random files used')
     parser.add_argument('--weight_types', nargs='+', type=str, default=['default_fkp'],
                         choices=['default', 'default_fkp', 'default_thetacut', 'default_auw', 'bitwise', 'bitwise_auw'], help='Weighting schemes to use.')
-    parser.add_argument('--todo', nargs='+', type=str, default=['mesh2_spectrum'],
+    parser.add_argument('--todo', nargs='+', type=str, default=['blinded_mesh2_spectrum'],
                         choices=['auw', 'mesh2_spectrum', 'window_mesh2_spectrum', 'covariance_mesh2_spectrum', 'count2_correlation', 'blinded_mesh2_spectrum'], help='Which processing steps to run.')
     args = parser.parse_args()
     setup_logging()
@@ -702,7 +700,7 @@ if __name__ == '__main__':
     ('ELG_LOPnotqso', (1.1, 1.6)),
     ('QSO', (0.8, 2.1))
     ]
-    tracers_bins = [default_bins[args.indx]] # TODO: Process one catalog bin and region per job to avoid cross-bin interaction issues
+    tracers_bins = [default_bins[args.indx]]
     with_jax = any(td in ['auw', 'mesh2_spectrum',  'blinded_mesh2_spectrum', 'window_mesh2_spectrum', 'covariance_mesh2_spectrum', 'count2_correlation'] for td in todo)
     if with_jax:
         import jax
@@ -717,7 +715,7 @@ if __name__ == '__main__':
         # logger.info((tracer, zrange), region, version, weight_type)
         if 'BGS' in tracer:
             tracer = 'BGS_BRIGHT-21.5' if 'dr1' in version else 'BGS_BRIGHT-21.35'
-        catalog_args = dict(version=version, region=region, tracer=tracer, zrange=zrange, weight_type=weight_type, nran=args.nran)
+        catalog_args = dict(version=version, region=region, tracer=tracer, zrange=zrange, weight_type=weight_type, nran=args.nran, subver=args.subver)
         spectrum_args = dict(**get_proposal_mattrs(catalog_args['tracer']), ells=(0, 2, 4), edges=dict(step=0.001))
         if weight_type.endswith('_thetacut'):
             catalog_args['weight_type'] = weight_type[:-len('_thetacut')]
@@ -731,7 +729,7 @@ if __name__ == '__main__':
             for kind in todo:
                 kw = dict(kind=f'{kind}_poles', **catalog_args, **spectrum_args)
                 output_fn = get_measurement_fn(**(kw | dict(region='GCcomb')))
-                if not os.path.exists(output_fn):
+                if not os.path.exists(output_fn) or overwrite==True:
                     if mpicomm.rank == 0:
                         fns = [get_measurement_fn(**(kw | dict(region=sub_region))) for sub_region in ['NGC','SGC']]
                         combine_regions(output_fn, fns)
@@ -775,7 +773,7 @@ if __name__ == '__main__':
                 if 'dr2' in version:
                     # spectrum_args2.update(ells=[0], edges={'step': 0.02})
                     raise ValueError(f'unblinded measurement is forbidden for {version}!')
-                if not os.path.exists(output_fn):
+                if not os.path.exists(output_fn) or overwrite==True:
                     with create_sharding_mesh() as sharding_mesh:
                         compute_jaxpower_mesh2_spectrum(output_fn, get_data, get_randoms, **spectrum_args2)
 
@@ -784,15 +782,16 @@ if __name__ == '__main__':
                 spectrum_args2 = dict(spectrum_args)
                 # if 'dr2' in version:
                     # spectrum_args2.update(ells=(0,), edges={'step': 0.02})
-                if not os.path.exists(output_fn):
+                if not os.path.exists(output_fn) or overwrite==True:
                     with create_sharding_mesh() as sharding_mesh:
-                        compute_jaxpower_mesh2_spectrum(output_fn, get_data, get_randoms, blinding=True, **spectrum_args2)
+                        compute_jaxpower_mesh2_spectrum(output_fn, get_data, get_randoms, blinding=True, tracer=catalog_args['tracer'], zrange=catalog_args['zrange'], **spectrum_args2)
 
             if 'window_mesh2_spectrum' in todo:
                 output_fn = get_measurement_fn(**catalog_args, kind='window_mesh2_spectrum_poles')
-                with create_sharding_mesh() as sharding_mesh:
-                    get_spectrum = lambda: compute_jaxpower_mesh2_spectrum(None, get_data, get_randoms, **spectrum_args)
-                    compute_jaxpower_window_mesh2_spectrum(output_fn, get_randoms, get_data=get_data, get_spectrum=get_spectrum)
+                if not os.path.exists(output_fn) or overwrite==True:
+                    with create_sharding_mesh() as sharding_mesh:
+                        get_spectrum = lambda: compute_jaxpower_mesh2_spectrum(None, get_data, get_randoms, **spectrum_args)
+                        compute_jaxpower_window_mesh2_spectrum(output_fn, get_randoms, get_data=get_data, get_spectrum=get_spectrum)
 
             if 'covariance_mesh2_spectrum' in todo:
                 jax.experimental.multihost_utils.sync_global_devices('covariance')
@@ -826,11 +825,11 @@ if __name__ == '__main__':
                     return spectrum
 
                 output_fn = get_measurement_fn(**catalog_args, kind='covariance_mesh2_spectrum_poles')
-                # if not os.path.exists(output_fn):
-                with create_sharding_mesh() as sharding_mesh:
-                    compute_jaxpower_covariance_mesh2_spectrum(output_fn, get_data, get_randoms, get_theory=get_theory, get_spectrum=get_spectrum)
-                    jax.clear_caches()
-        mpicomm.barrier()
+                if not os.path.exists(output_fn):
+                    with create_sharding_mesh() as sharding_mesh:
+                        compute_jaxpower_covariance_mesh2_spectrum(output_fn, get_data, get_randoms, get_theory=get_theory, get_spectrum=get_spectrum)
+                        jax.clear_caches()
+            mpicomm.barrier()
         if with_jax:
             jax.distributed.shutdown()
 

@@ -1141,20 +1141,31 @@ def plot_moll(hmap, whmap=None, min=None, max=None, nest=False, title='', label=
         labels += ['Euclid']
     if des_footprint:
         for name in glob.glob(os.path.join(mask_dir, 'des_footprint.npy')):
+        # for name in glob.glob('des_footprint.npy'):
             pol = np.load(name, allow_pickle=True)
             pol[0] *= -1
             pol[0] += rot
             pol[0] = np.remainder(pol[0] + 360, 360)
             pol[0][pol[0] > 180] -= 360
             ax.add_patch(Polygon(np.radians(pol).T, facecolor='darkred', alpha=0))
-            ax.plot(np.radians(pol[0]), np.radians(pol[1]), color='darkred', lw=0.8, zorder=100, label='DES')
+            ax.plot(np.radians(pol[0]), np.radians(pol[1]), color='darkred', lw=1.5, zorder=100)
+            if handles is None:
+                handles, labels = ax.get_legend_handles_labels()
+            handles +=[mlines.Line2D([], [], color='darkred', linestyle='-', lw=1.5)]
+            labels += ['DES']
 
+    plot_NS_line = True
+    if plot_NS_line:
+        ra = np.linspace(0, 360, 100)
+        dec = np.zeros_like(ra)+32.375
+        line_ra = projection_ra(ra)
+        line_dec = projection_dec(dec)
+        ax.plot(line_ra, line_dec, color = 'darkblue', zorder=1000)
         if handles is None:
             handles, labels = ax.get_legend_handles_labels()
-        handles +=[mlines.Line2D([], [], color='darkred', linestyle='-', lw=1.5)]
-        labels += ['DES']
+        handles +=[mlines.Line2D([], [], linestyle='-', color='darkblue', lw=1.5)]
+        labels += ['N/S']
 
-        
     if show_legend:
         if handles is not None:
             ax.legend(handles, labels, ncol=2, loc='upper left', bbox_to_anchor=(0.6, 0.7, 0, 0.4), fontsize=fontsize_legend)
@@ -1169,6 +1180,7 @@ def plot_moll(hmap, whmap=None, min=None, max=None, nest=False, title='', label=
     ax.set_xlabel('R.A. [deg]', labelpad=xlabel_labelpad, fontsize=fontsize)
     ax.xaxis.set_label_position('top')
     ax.set_ylabel('Dec. [deg]', fontsize=fontsize)
+
 
     ax.grid(True)
     plt.tight_layout()

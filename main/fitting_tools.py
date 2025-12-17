@@ -50,19 +50,11 @@ def get_measurement_fn(kind='mesh2_spectrum_poles', version='dr2-v2', recon=None
     # base_dir = Path(f'/global/cfs/projectdirs/desi/mocks/cai/mock-challenge-cutsky-dr2/')
     # base_dir = base_dir / (f'blinded_{recon}' if recon else 'blinded')
     base_dir = Path(f'/global/cfs/projectdirs/desi/mocks/cai/mock-challenge-cutsky-dr2/blinded_data/{version}/data_splits')
-    if 'window' in kind or 'covariance' in kind:
-        base_dir = Path(f'/global/cfs/projectdirs/desi/mocks/cai/mock-challenge-cutsky-dr2/unblinded_data/{version}')
-        if cut: cut = '_thetacut'
-        else: cut = ''
-        if auw: auw = '_auw'
-        else: auw = ''
-        return str(base_dir / f'{kind}_{tracer}_z{zrange[0]:.1f}-{zrange[1]:.1f}_{region}_{weight_type}{auw}{cut}.h5')
-    else:
-        if cut: cut = '_thetacut'
-        else: cut = ''
-        if auw: auw = '_auw'
-        else: auw = ''
-        return str(base_dir / f'{kind}_{tracer}_z{zrange[0]:.1f}-{zrange[1]:.1f}_{region}_{weight_type}{auw}{cut}_nran{nran}.h5')
+    if cut: cut = '_thetacut'
+    else: cut = ''
+    if auw: auw = '_auw'
+    else: auw = ''
+    return str(base_dir / f'{kind}_{tracer}_z{zrange[0]:.1f}-{zrange[1]:.1f}_{region}_{weight_type}{auw}{cut}_nran{nran}.h5')
 
 def get_effective_redshift(args):
     window = types.read(get_measurement_fn(**args, kind='window_mesh2_spectrum_poles'))

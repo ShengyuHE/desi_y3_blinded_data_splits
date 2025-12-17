@@ -29,7 +29,7 @@ if [[ " ${TASK[@]} " =~ " win " ]]; then
         srun -N 1 -n 4 -C "gpu&hbm80g" -t 04:00:00 --gpus 4 --qos interactive --account desi_g \
             python blinded_data_pip.py --version test --tracers $tracer --regions NGC SGC GCcomb --nran  --todo window_mesh2_spectrum
     done
-fixw
+fi
 
 # splits on photometric region and compute the power poles
 

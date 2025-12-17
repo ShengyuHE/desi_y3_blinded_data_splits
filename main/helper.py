@@ -218,7 +218,6 @@ def GET_CTHR(tracer):
         cthr = 3000
     return cthr
 
-
 def get_des_mask(ra, dec, polygon_dir='/global/homes/s/shengyu/Y3/blinded_data_splits/scripts', if_deg=True):
     import matplotlib.patches as patches
     from matplotlib.patches import Polygon

@@ -26,6 +26,11 @@ COLOR_TRACERS = dict(BGS1='yellowgreen',
                     ELG1='skyblue', ELG2= 'steelblue',
                     QSO1='purple')
 
+COLOR_TRACER_GRADIENT = dict(BGS1='Greens', 
+                    LRG1='Reds', LRG2='Reds', LRG3='Reds',
+                    ELG1='Blues', ELG2= 'Blues',
+                    QSO1='Purples')
+
 ##### Functions #####
 
 def get_namespace(tracer, zrange):
