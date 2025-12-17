@@ -3,7 +3,9 @@
 This repository provides all the analysis done for **DESI DR2 blinded data splits tests**.
 Measurements and results are saved in desi path: 
 
-'/global/cfs/projectdirs/desi/mocks/cai/mock-challenge-cutsky-dr2/blinded_data/dr2-v2/data_splits'
+''
+/global/cfs/projectdirs/desi/mocks/cai/mock-challenge-cutsky-dr2/blinded_data/dr2-v2/data_splits
+''
 
 To activate the envrioment in NERSC, suggest:
 ```
