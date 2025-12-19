@@ -18,4 +18,4 @@ source /global/homes/s/shengyu/env.sh 2pt_env
 
 ## Power spectrum estimator
 
-We use `jaxpower` (https://github.com/adematti/jax-power.git) to estimate the power spectrum and compute the window function and analytical Gaussian covariance matrix. The original script of `blinded_data_pip.py` is in （https://github.com/cosmodesi/cai-mock-benchmark.git）
+We use `jaxpower` (https://github.com/adematti/jax-power.git) to estimate the power spectrum and compute the window function and analytical Gaussian covariance matrix. The original script of `blinded_data_pip.py` is in （https://github.com/cosmodesi/cai-mock-benchmark.git)
